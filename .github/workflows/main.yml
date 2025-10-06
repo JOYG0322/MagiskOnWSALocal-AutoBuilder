@@ -14,9 +14,7 @@ jobs:
       - name: Prepare environment (no snap)
         run: |
           sudo apt-get update -y
-          sudo apt-get purge -y snapd firefox || true
-          sudo rm -rf /var/cache/apt/archives/*.deb /snap /var/snap /var/lib/snapd /etc/systemd/system/snap*
-          sudo apt-get install -y git wget unzip p7zip-full python3 python3-pip aria2
+          sudo apt-get upgrade -y git wget unzip python3 python3-pip p7zip-full aria2
 
       - name: Build WSA (Minimal Win10)
         run: |
