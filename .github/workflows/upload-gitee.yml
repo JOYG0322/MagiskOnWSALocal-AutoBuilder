@@ -1,21 +1,14 @@
-name: Upload Artifacts to Gitee
+name: Upload Built WSA Packages to Gitee
 
 on:
-  workflow_dispatch:        # 允许手动触发
-  workflow_run:             # 主构建完成后自动触发
-    workflows: ["Build & Release WSA Variants"]
-    types:
-      - completed
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  upload-to-gitee:
-    name: Upload to Gitee Releases
+  upload-gitee:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-
     strategy:
       matrix:
         include:
@@ -31,29 +24,37 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Download release assets from GitHub
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate tag name
+        id: set_tag
+        run: |
+          TAG_NAME="build-$(date +'%Y%m%d-%H%M%S')"
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "Generated tag: $TAG_NAME"
+
+      - name: Prepare release files
         run: |
           mkdir -p release
-          gh release download --repo "${{ github.repository }}" --pattern "*.7z" --dir release
+          echo "📦 Fetching built artifact for: ${{ matrix.winver }} / ${{ matrix.root }} / ${{ matrix.gapps }}"
+          gh release download --repo "${{ github.repository }}" --pattern "WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}.7z" --dir release || true
 
-      - name: Setup upload script
-        run: chmod +x scripts/upload-gitee.sh
-
-      - name: Upload to Gitee
-        env:
-          GITEE_USER: JOYG0322                  # 改成你的 Gitee 用户名（区分大小写）
-          GITEE_REPO: magisk-on-wsalocal-auto-builder
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          TAG_NAME: latest
-        run: |
           FILE_PATH=$(find release -name "*.7z" | head -n 1)
-          if [ -f "$FILE_PATH" ]; then
-            echo "Found file: $FILE_PATH"
-            bash scripts/upload-gitee.sh "$GITEE_USER" "$GITEE_REPO" "$TAG_NAME" "$FILE_PATH"
-          else
-            echo "❌ No .7z file found for ${{ matrix.winver }} ${{ matrix.root }} ${{ matrix.gapps }}"
+          if [ ! -f "$FILE_PATH" ]; then
+            echo "❌ No .7z found for ${{ matrix.winver }} ${{ matrix.root }} ${{ matrix.gapps }}"
             exit 1
           fi
+          echo "Found file: $FILE_PATH"
+
+      - name: Upload to Gitee Releases
+        env:
+          GITEE_USER: JOYG0322
+          GITEE_REPO: magisk-on-wsalocal-auto-builder
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          TAG_NAME: ${{ env.TAG_NAME }}
+        run: |
+          chmod +x scripts/upload-gitee.sh
+          FILE_PATH=$(find release -name "*.7z" | head -n 1)
+          echo "🆙 Uploading $FILE_PATH to Gitee as tag $TAG_NAME"
+          bash scripts/upload-gitee.sh "$GITEE_USER" "$GITEE_REPO" "$TAG_NAME" "$FILE_PATH"
