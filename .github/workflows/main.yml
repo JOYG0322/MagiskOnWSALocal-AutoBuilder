@@ -1,54 +1,29 @@
-name: Build WSA (minimal safe)
+name: Build Minimal WSA
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
-        with:
-          submodules: true
 
-      - name: Update minimal required dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --only-upgrade ca-certificates libssl-dev libssl3t64 openssl python3-venv
+          sudo apt-get install -y python3 python3-venv python3-pip aria2 unzip p7zip-full
 
-      - name: Prepare build environment
+      - name: Run builder
+        working-directory: scripts
         run: |
-          # 防止 GitHub Actions 输出 "Your terminal lacks the ability..." 导致参数被污染
-          export TERM=dumb
-          export NO_COLOR=1
-          export PYTHONUNBUFFERED=1
-
-          # 屏蔽 clear 与 tput（避免 run.sh 被污染）
-          clear() { :; }
-          tput() { :; }
-          export -f clear tput
-
-          # 检查 Python 环境
-          python3 -m venv venv
-          source venv/bin/activate
-          python3 --version
-
-      - name: Build WSA (minimal)
-        run: |
-          bash scripts/run.sh \
-            --arch x64 \
-            --release-type retail \
-            --root-sol none \
-            --gapps-variant none \
-            --remove-amazon true \
-            --windows-version 10 \
-            --compress-format 7z
+          chmod +x build.sh
+          ./build.sh --arch x64 --release-type retail --root-sol none --remove-amazon --compress-format 7z
 
       - name: Upload output
         uses: actions/upload-artifact@v4
         with:
-          name: WSA-minimal
+          name: WSA-Minimal
           path: output/
