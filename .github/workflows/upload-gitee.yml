@@ -32,11 +32,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}
-          path: ./release
+      - name: Download release assets from GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release
+          gh release download --repo "${{ github.repository }}" --pattern "*.7z" --dir release
 
       - name: Setup upload script
         run: chmod +x scripts/upload-gitee.sh
