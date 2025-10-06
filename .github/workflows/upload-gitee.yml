@@ -1,0 +1,38 @@
+name: Upload to Gitee Releases (Parallel Auto-Retry)
+
+on:
+  workflow_dispatch:  # 手动触发，也可以改成 schedule
+  workflow_run:
+    workflows: ["Build WSA"]  # 👈 改成你构建流程的名字
+    types:
+      - completed
+
+jobs:
+  upload:
+    name: Upload ${{ matrix.file }} to Gitee
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        file:
+          - WSA_10_magisk_gapps.7z
+          - WSA_10_magisk_none.7z
+          - WSA_11_kernelsu_gapps.7z
+          - WSA_11_none_gapps.7z
+          - WSA_11_magisk_none.7z
+          - WSA_11_kernelsu_none.7z
+      fail-fast: false
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.file }}
+          path: release
+
+      - name: Upload to Gitee (Auto Retry)
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_REPO: "你的用户名/你的仓库"  # 👈 改这里
+        run: |
+          chmod +x .github/scripts/upload-gitee.sh
+          bash .github/scripts/upload-gitee.sh "release/${{ matrix.file }}"
