@@ -19,6 +19,12 @@ jobs:
           - winver: 11
             root: none
             gapps: none
+          - winver: 10
+            root: kernelsu
+            gapps: mindthegapps
+          - winver: 11
+            root: kernelsu
+            gapps: mindthegapps
 
     steps:
       - name: Checkout
