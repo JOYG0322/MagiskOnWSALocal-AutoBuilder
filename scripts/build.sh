@@ -598,7 +598,7 @@ if [ "$COMPRESS_FORMAT" != "none" ]; then
     rm -f "${OUTPUT_PATH:?}" || abort
     if [ "$COMPRESS_FORMAT" = "7z" ]; then
         echo "Compressing with 7z to $OUTPUT_PATH"
-        7z a -mx=5 -mmt=on "${OUTPUT_PATH:?}" "$WORK_DIR/wsa/$artifact_name" || abort
+        7z a -mx=7 -mmt=on "${OUTPUT_PATH:?}" "$WORK_DIR/wsa/$artifact_name" || abort
     elif [ "$COMPRESS_FORMAT" = "zip" ]; then
         echo "Compressing with zip to $OUTPUT_PATH"
         7z -tzip a "$OUTPUT_PATH" "$WORK_DIR/wsa/$artifact_name" || abort
