@@ -1,38 +1,58 @@
-name: Upload to Gitee Releases (Parallel Auto-Retry)
+name: Upload Artifacts to Gitee
 
 on:
-  workflow_dispatch:  # 手动触发，也可以改成 schedule
-  workflow_run:
+  workflow_dispatch:        # 允许手动触发
+  workflow_run:             # 主构建完成后自动触发
     workflows: ["Build & Release WSA Variants"]
     types:
       - completed
 
+permissions:
+  contents: read
+
 jobs:
-  upload:
-    name: Upload ${{ matrix.file }} to Gitee
+  upload-to-gitee:
+    name: Upload to Gitee Releases
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
     strategy:
       matrix:
-        file:
-          - WSA_10_magisk_gapps.7z
-          - WSA_10_magisk_none.7z
-          - WSA_11_kernelsu_gapps.7z
-          - WSA_11_none_gapps.7z
-          - WSA_11_magisk_none.7z
-          - WSA_11_kernelsu_none.7z
-      fail-fast: false
+        include:
+          - { winver: 10, root: magisk, gapps: none }
+          - { winver: 10, root: magisk, gapps: mindthegapps }
+          - { winver: 10, root: kernelsu, gapps: none }
+          - { winver: 10, root: none, gapps: mindthegapps }
+          - { winver: 11, root: magisk, gapps: none }
+          - { winver: 11, root: magisk, gapps: mindthegapps }
+          - { winver: 11, root: kernelsu, gapps: none }
+          - { winver: 11, root: none, gapps: mindthegapps }
 
     steps:
-      - name: Download build artifacts
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.file }}
-          path: release
+          name: WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}
+          path: ./release
 
-      - name: Upload to Gitee (Auto Retry)
+      - name: Setup upload script
+        run: chmod +x scripts/upload-gitee.sh
+
+      - name: Upload to Gitee
         env:
+          GITEE_USER: JOYG0322                  # 改成你的 Gitee 用户名（区分大小写）
+          GITEE_REPO: magisk-on-wsalocal-auto-builder
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          GITEE_REPO: "JOYG0322/magisk-on-wsalocal-auto-builder"
+          TAG_NAME: latest
         run: |
-          chmod +x .github/scripts/upload-gitee.sh
-          bash .github/scripts/upload-gitee.sh "release/${{ matrix.file }}"
+          FILE_PATH=$(find release -name "*.7z" | head -n 1)
+          if [ -f "$FILE_PATH" ]; then
+            echo "Found file: $FILE_PATH"
+            bash scripts/upload-gitee.sh "$GITEE_USER" "$GITEE_REPO" "$TAG_NAME" "$FILE_PATH"
+          else
+            echo "❌ No .7z file found for ${{ matrix.winver }} ${{ matrix.root }} ${{ matrix.gapps }}"
+            exit 1
+          fi
