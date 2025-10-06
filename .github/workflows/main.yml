@@ -1,7 +1,7 @@
 name: Build WSA (Matrix Auto Build)
 
 on:
-  workflow_dispatch:  
+  workflow_dispatch:
   push:
     branches: [ main ]
 
@@ -25,17 +25,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up environment
+      - name: Install dependencies
         run: |
           echo "==== Setting up environment ===="
           sudo apt update -y
           sudo apt install -y git wget unzip python3 python3-pip p7zip-full aria2 jq
 
-      - name: Clone MagiskOnWSALocal
+      - name: Clone MagiskOnWSALocal (official)
         run: |
-          echo "==== Cloning MagiskOnWSALocal ===="
-          git clone https://github.com/LSPosed/MagiskOnWSALocal.git --depth=1
-          cd MagiskOnWSALocal
+          echo "==== Cloning LSPosed/MagiskOnWSALocal ===="
+          git clone https://github.com/LSPosed/MagiskOnWSALocal.git
+          ls -al MagiskOnWSALocal
+
+      - name: Verify build script
+        run: |
+          echo "==== Checking build.sh existence ===="
+          if [ ! -f "MagiskOnWSALocal/build.sh" ]; then
+            echo "::error::build.sh not found inside MagiskOnWSALocal repo."
+            exit 1
+          fi
 
       - name: Build WSA
         working-directory: MagiskOnWSALocal
@@ -54,7 +62,8 @@ jobs:
           echo "GApps variant: $GAPPSTYPE"
           echo "Target Windows version: $WINVER"
 
-          bash ./build.sh \
+          chmod +x build.sh
+          ./build.sh \
             --arch "$ARCH" \
             --release-type "$RELEASE_TYPE" \
             --magisk-ver stable \
