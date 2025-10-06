@@ -3,7 +3,7 @@ name: Upload to Gitee Releases (Parallel Auto-Retry)
 on:
   workflow_dispatch:  # 手动触发，也可以改成 schedule
   workflow_run:
-    workflows: ["Build WSA"]  # 👈 改成你构建流程的名字
+    workflows: ["Build & Release WSA Variants"]
     types:
       - completed
 
@@ -32,7 +32,7 @@ jobs:
       - name: Upload to Gitee (Auto Retry)
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          GITEE_REPO: "你的用户名/你的仓库"  # 👈 改这里
+          GITEE_REPO: "JOYG0322/magisk-on-wsalocal-auto-builder"
         run: |
           chmod +x .github/scripts/upload-gitee.sh
           bash .github/scripts/upload-gitee.sh "release/${{ matrix.file }}"
