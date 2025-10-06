@@ -34,6 +34,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check for upstream sync
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        run: |
+          last_commit_msg="$(git log -1 --pretty=%B)"
+          echo "Last commit message: $last_commit_msg"
+          if ! echo "$last_commit_msg" | grep -q "Sync from upstream"; then
+            echo "🟡 No upstream change detected — skipping build."
+            exit 78
+          fi
+  
       - name: Setup build dependencies
         run: |
           sudo apt update -y
