@@ -98,24 +98,10 @@ jobs:
       - name: Create GitHub Release
         run: |
           echo "Creating release: ${TAG}"
+          NOTES="### 🚀 WSA Automated Build\n\nThis release contains all **WSA** build variants compiled automatically.\n\n| Windows | Root | GApps | Amazon |\n|----------|------|-------|--------|\n| 10 | Magisk | None | ❌ |\n| 10 | Magisk | MindTheGapps | ❌ |\n| 10 | None | MindTheGapps | ❌ |\n| 11 | Magisk | None | ❌ |\n| 11 | Magisk | MindTheGapps | ❌ |\n| 11 | None | MindTheGapps | ❌ |\n\n🗜️ All builds are compressed in \`.7z\` format.\n📦 Built from latest source at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          
           gh release create "${TAG}" release/*/*.7z \
             --title "WSA Auto Build ${TAG}" \
-            --notes-file - <<EOF
-### 🚀 WSA Automated Build
-
-This release contains all **WSA** build variants compiled automatically.
-
-| Windows | Root | GApps | Amazon |
-|----------|------|-------|--------|
-| 10 | Magisk | None | ❌ |
-| 10 | Magisk | MindTheGapps | ❌ |
-| 10 | None | MindTheGapps | ❌ |
-| 11 | Magisk | None | ❌ |
-| 11 | Magisk | MindTheGapps | ❌ |
-| 11 | None | MindTheGapps | ❌ |
-
-🗜️ All builds are compressed in \`.7z\` format.
-📦 Built from latest source at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
-"
+            --notes "$NOTES"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
