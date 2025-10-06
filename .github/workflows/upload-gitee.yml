@@ -21,6 +21,9 @@ jobs:
           - { winver: 11, root: kernelsu, gapps: none }
           - { winver: 11, root: none, gapps: mindthegapps }
 
+    env:
+      GH_TOKEN: ${{ github.token }}   # ✅ 必须添加，供 gh CLI 使用
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -38,14 +41,22 @@ jobs:
         run: |
           mkdir -p release
           echo "📦 Fetching built artifact for: ${{ matrix.winver }} / ${{ matrix.root }} / ${{ matrix.gapps }}"
-          gh release download --repo "${{ github.repository }}" --pattern "WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}.7z" --dir release || true
+
+          # 自动重试 3 次，避免偶发下载失败
+          for i in 1 2 3; do
+            gh release download --repo "${{ github.repository }}" \
+              --pattern "WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}.7z" \
+              --dir release && break
+            echo "⚠️ Download attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
           FILE_PATH=$(find release -name "*.7z" | head -n 1)
           if [ ! -f "$FILE_PATH" ]; then
             echo "❌ No .7z found for ${{ matrix.winver }} ${{ matrix.root }} ${{ matrix.gapps }}"
             exit 1
           fi
-          echo "Found file: $FILE_PATH"
+          echo "✅ Found file: $FILE_PATH"
 
       - name: Upload to Gitee Releases
         env:
