@@ -14,7 +14,8 @@ jobs:
       - name: Prepare environment (no snap)
         run: |
           sudo apt-get update -y
-          sudo apt-get upgrade -y git wget unzip python3 python3-pip p7zip-full aria2
+          sudo apt-get install -y --no-install-recommends \
+            git wget unzip python3 python3-pip p7zip-full aria2
 
       - name: Build WSA (Minimal Win10)
         run: |
