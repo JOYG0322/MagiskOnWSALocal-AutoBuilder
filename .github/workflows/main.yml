@@ -1,37 +1,54 @@
-name: Build WSA Minimal
+name: Build WSA (minimal safe)
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
-      - name: Prepare minimal environment
+      - name: Update minimal required dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y git wget unzip python3 python3-pip p7zip-full aria2
-          sudo systemctl disable --now snapd.socket snapd.service || true
-          sudo apt-get remove --purge -y firefox snapd || true
-          sudo rm -rf /var/cache/snapd /snap /var/snap /var/lib/snapd /etc/systemd/system/snap* || true
+          sudo apt-get update -qq
+          sudo apt-get install -y --only-upgrade ca-certificates libssl-dev libssl3t64 openssl python3-venv
 
-      - name: Run WSA build script
+      - name: Prepare build environment
         run: |
-          export TERM=xterm
-          chmod +x ./scripts/build.sh
-          ./scripts/build.sh \
+          # 防止 GitHub Actions 输出 "Your terminal lacks the ability..." 导致参数被污染
+          export TERM=dumb
+          export NO_COLOR=1
+          export PYTHONUNBUFFERED=1
+
+          # 屏蔽 clear 与 tput（避免 run.sh 被污染）
+          clear() { :; }
+          tput() { :; }
+          export -f clear tput
+
+          # 检查 Python 环境
+          python3 -m venv venv
+          source venv/bin/activate
+          python3 --version
+
+      - name: Build WSA (minimal)
+        run: |
+          bash scripts/run.sh \
             --arch x64 \
             --release-type retail \
             --root-sol none \
-            --compress-format 7z \
-            --target-win 10 \
-            --remove-amazon
+            --gapps-variant none \
+            --remove-amazon true \
+            --windows-version 10 \
+            --compress-format 7z
 
-      - name: Upload build artifact
+      - name: Upload output
         uses: actions/upload-artifact@v4
         with:
           name: WSA-minimal
-          path: output/*.7z
+          path: output/
