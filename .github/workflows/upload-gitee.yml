@@ -1,53 +1,49 @@
 name: Upload to Gitee Releases
 
 on:
-  workflow_dispatch:  # 手动触发
-  workflow_run:
-    workflows: ["Build & Release WSA Variants"]
-    types:
-      - completed
-
-permissions:
-  contents: read
+  workflow_dispatch:
+  workflow_call:
 
 jobs:
   upload:
+    name: Upload ${{ matrix.os_version }} / ${{ matrix.root_variant }} / ${{ matrix.gapps_variant }}
     runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os_version: [10, 11]
+        root_variant: [magisk, kernelsu, none]
+        gapps_variant: [mindthegapps, none]
+        exclude:
+          - root_variant: none
+            gapps_variant: none
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup dependencies
-        run: sudo apt-get install -y curl jq git
-
-      - name: Generate tag name
-        id: tag
-        run: echo "TAG_NAME=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
-
-      - name: Download all release artifacts
+      - name: Download built artifact
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p release
-          echo "📦 Downloading all release artifacts..."
-          gh release download --repo "${{ github.repository }}" --pattern "*.7z" --dir release
+          ARTIFACT="WSA_${{ matrix.os_version }}_${{ matrix.root_variant }}_${{ matrix.gapps_variant }}"
+          echo "📦 Fetching artifact: $ARTIFACT"
+          gh run download --repo "${{ github.repository }}" --name "$ARTIFACT" --dir release || true
+          if [ -z "$(find release -name '*.7z' 2>/dev/null)" ]; then
+            echo "❌ No .7z found for $ARTIFACT"
+            exit 1
+          fi
 
-      - name: Upload each .7z to Gitee
+      - name: Upload to Gitee Releases
         env:
           GITEE_USER: JOYG0322
           GITEE_REPO: magisk-on-wsalocal-auto-builder
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          TAG_NAME: ${{ env.TAG_NAME }}
+          TAG_NAME: build-${{ github.run_id }}
         run: |
+          FILE_PATH=$(find release -name "*.7z" | head -n 1)
+          echo "Found file: $FILE_PATH"
           chmod +x scripts/upload-gitee.sh
-          for file in release/*.7z; do
-            if [ -f "$file" ]; then
-              echo "🆙 Uploading $file..."
-              bash scripts/upload-gitee.sh "$GITEE_USER" "$GITEE_REPO" "$TAG_NAME" "$file"
-            else
-              echo "⚠️ No .7z file found!"
-              exit 1
-            fi
-          done
+          bash scripts/upload-gitee.sh "$GITEE_USER" "$GITEE_REPO" "$TAG_NAME" "$FILE_PATH"
