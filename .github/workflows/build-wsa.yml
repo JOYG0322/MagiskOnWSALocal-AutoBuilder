@@ -19,10 +19,12 @@ jobs:
           # Win10
           - { winver: 10, root: magisk, gapps: none }
           - { winver: 10, root: magisk, gapps: mindthegapps }
+          - { winver: 10, root: kernelsu, gapps: none }
           - { winver: 10, root: none, gapps: mindthegapps }
           # Win11
           - { winver: 11, root: magisk, gapps: none }
           - { winver: 11, root: magisk, gapps: mindthegapps }
+          - { winver: 11, root: kernelsu, gapps: none }
           - { winver: 11, root: none, gapps: mindthegapps }
 
     steps:
