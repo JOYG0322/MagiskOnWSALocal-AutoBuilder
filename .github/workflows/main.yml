@@ -34,7 +34,9 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-
+        with:
+        submodules: true
+        
       - name: Prepare environment
         run: |
           sudo apt update
