@@ -1,83 +1,77 @@
-name: Build WSA (Full Auto)
+name: Build WSA (Matrix Auto Build)
 
 on:
-  workflow_dispatch:
-    inputs:
-      magisk_version:
-        description: "Magisk version"
-        required: true
-        default: "stable"
-      root_solution:
-        description: "Root solution (magisk/kernelsu/none)"
-        required: true
-        default: "none"
-      gapps_variant:
-        description: "GApps variant (MindTheGapps/OpenGApps/none)"
-        required: true
-        default: "none"
-      architecture:
-        description: "Architecture (x64/arm64)"
-        required: true
-        default: "x64"
-      windows_edition:
-        description: "Target Windows edition (10/11)"
-        required: true
-        default: "11"
-
-env:
-  TERM: xterm
-  DEBIAN_FRONTEND: noninteractive
-  PIP_DISABLE_PIP_VERSION_CHECK: 1
+  workflow_dispatch:  
+  push:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      matrix:
+        windows: [10, 11]
+        gapps: [none, mindthegapps]
+        arch: [x64]
+        include:
+          - windows: 10
+            release_type: retail
+          - windows: 11
+            release_type: retail
 
     steps:
-      - name: 🧩 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: ⚙️ Prepare build environment
+      - name: Set up environment
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y python3 python3-pip git wget unzip p7zip-full jq
-          python3 -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          echo "Environment ready."
+          echo "==== Setting up environment ===="
+          sudo apt update -y
+          sudo apt install -y git wget unzip python3 python3-pip p7zip-full aria2 jq
 
-      - name: 🧱 Run build script
+      - name: Clone MagiskOnWSALocal
         run: |
-          chmod +x ./build.sh
+          echo "==== Cloning MagiskOnWSALocal ===="
+          git clone https://github.com/LSPosed/MagiskOnWSALocal.git --depth=1
+          cd MagiskOnWSALocal
+
+      - name: Build WSA
+        working-directory: MagiskOnWSALocal
+        run: |
           echo "==== Building WSA ===="
-          ./build.sh \
-            --arch "${{ github.event.inputs.architecture }}" \
-            --release-type retail \
-            --magisk-ver "${{ github.event.inputs.magisk_version }}" \
-            --root-sol "${{ github.event.inputs.root_solution }}" \
-            --gapps-type "${{ github.event.inputs.gapps_variant }}" \
-            --compress-format 7z || (cat build.log || true)
-        shell: bash
+          python3 -m venv .venv
+          source .venv/bin/activate
 
-      - name: 📦 Collect output
-        run: |
-          mkdir -p output
-          find . -maxdepth 2 -type f \( -name "*.7z" -o -name "*.zip" \) -exec mv {} ./output/ \;
-          ls -lh output || echo "No output files found."
+          ARCH="${{ matrix.arch }}"
+          RELEASE_TYPE="${{ matrix.release_type }}"
+          WINVER="${{ matrix.windows }}"
+          GAPPSTYPE="${{ matrix.gapps }}"
 
-      - name: 🚀 Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: WSA-${{ github.event.inputs.windows_edition }}-${{ github.event.inputs.architecture }}
-          path: output/
+          echo "Architecture: $ARCH"
+          echo "Release type: $RELEASE_TYPE"
+          echo "GApps variant: $GAPPSTYPE"
+          echo "Target Windows version: $WINVER"
 
-      - name: 🪄 Publish to GitHub Releases
-        if: success()
+          bash ./build.sh \
+            --arch "$ARCH" \
+            --release-type "$RELEASE_TYPE" \
+            --magisk-ver stable \
+            --root-sol none \
+            --compress-format 7z \
+            $( [ "$GAPPSTYPE" != "none" ] && echo "--gapps-variant $GAPPSTYPE" )
+
+      - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "wsa-${{ github.run_id }}"
-          name: "WSA Build - ${{ github.event.inputs.windows_edition }} - ${{ github.event.inputs.architecture }}"
-          files: output/*
+          files: MagiskOnWSALocal/output/*.7z
+          tag_name: "auto-build-${{ matrix.windows }}-${{ matrix.gapps }}"
+          name: "WSA_${{ matrix.windows }}_${{ matrix.gapps }}_x64"
+          body: |
+            🏗️ Auto-built WSA package
+            - Windows version: ${{ matrix.windows }}
+            - GApps: ${{ matrix.gapps }}
+            - Architecture: ${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
