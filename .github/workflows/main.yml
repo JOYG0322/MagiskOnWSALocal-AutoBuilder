@@ -11,7 +11,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    env:
+      TERM: xterm
+      
     strategy:
       matrix:
         windows: [10, 11]
