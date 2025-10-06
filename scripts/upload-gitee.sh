@@ -1,64 +1,59 @@
-#!/usr/bin/env bash
-set -e
+  upload_to_gitee:
+    name: Upload to Gitee
+    runs-on: ubuntu-latest
+    needs: build
+    if: success()
 
-# === 参数 ===
-USER="$1"
-REPO="$2"
-TAG="$3"
-FILE="$4"
-TOKEN="$GITEE_TOKEN"
-API="https://gitee.com/api/v5/repos/$USER/$REPO"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-# === 打印基本信息 ===
-echo "🆙 Uploading $FILE to Gitee as tag $TAG"
-echo "📦 正在上传文件: $(basename "$FILE")"
-echo "➡️  目标仓库: $USER/$REPO"
-echo "➡️  标签: $TAG"
+      - name: Find release file
+        id: find_file
+        run: |
+          FILE_PATH=$(find release -name "*.7z" | head -n 1)
+          if [ -z "$FILE_PATH" ]; then
+            echo "No .7z file found."
+            exit 1
+          fi
+          echo "file=$FILE_PATH" >> $GITHUB_OUTPUT
+          echo "Found file: $FILE_PATH"
 
-# === 检查文件存在 ===
-if [ ! -f "$FILE" ]; then
-  echo "❌ 文件不存在：$FILE"
-  exit 1
-fi
+      - name: Upload to Gitee Release
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          OWNER: ${{ secrets.GITEE_USER }}
+          REPO: ${{ secrets.GITEE_REPO }}
+          TAG_NAME: build-${{ github.run_id }}
+          FILE_PATH: ${{ steps.find_file.outputs.file }}
+        run: |
+          set -e
+          echo "Uploading $FILE_PATH to Gitee as tag $TAG_NAME"
+          echo "Target repo: ${OWNER}/${REPO}"
 
-# === 检测默认分支 ===
-echo "🔍 检查默认分支..."
-DEFAULT_BRANCH=$(curl -s "$API?access_token=$TOKEN" | grep -oE '"default_branch":"[^"]+' | cut -d'"' -f4)
-if [ -z "$DEFAULT_BRANCH" ]; then
-  DEFAULT_BRANCH="main"
-fi
-echo "📄 默认分支: $DEFAULT_BRANCH"
+          DEFAULT_BRANCH=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}?access_token=${GITEE_TOKEN}" | jq -r '.default_branch')
+          COMMIT_SHA=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/commits/${DEFAULT_BRANCH}?access_token=${GITEE_TOKEN}" | jq -r '.sha')
 
-# === 检查 Tag 是否存在（忽略 404） ===
-echo "🔍 检查 Tag 是否存在..."
-TAG_RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/tag_check.json \
-  "$API/tags/$TAG?access_token=$TOKEN" || true)
+          EXISTS=$(curl -s -o /dev/null -w "%{http_code}" "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}?access_token=${GITEE_TOKEN}")
+          if [ "$EXISTS" = "200" ]; then
+            RELEASE_ID=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}?access_token=${GITEE_TOKEN}" | jq -r '.id')
+            curl -X DELETE "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/${RELEASE_ID}?access_token=${GITEE_TOKEN}"
+          else
+            curl -X POST \
+              -H "Content-Type: application/json;charset=UTF-8" \
+              -d "{\"tag_name\":\"${TAG_NAME}\",\"target_commitish\":\"${COMMIT_SHA}\"}" \
+              "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/tags?access_token=${GITEE_TOKEN}"
+          fi
 
-if [ "$TAG_RESPONSE" = "200" ]; then
-  echo "✅ Tag 已存在，继续使用。"
-else
-  echo "🆕 创建新标签 $TAG..."
-  CREATE_TAG_RESP=$(curl -s -X POST "$API/tags?access_token=$TOKEN" \
-    -H "Content-Type: application/json" \
-    -d "{\"tag_name\":\"$TAG\",\"ref\":\"$DEFAULT_BRANCH\",\"message\":\"Auto build $TAG\"}" \
-    -w "%{http_code}" -o /tmp/create_tag.json || true)
+          curl -X POST \
+            -H "Content-Type: application/json;charset=UTF-8" \
+            -d "{\"tag_name\":\"${TAG_NAME}\",\"name\":\"${TAG_NAME}\",\"body\":\"Auto-upload from GitHub Actions\"}" \
+            "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases?access_token=${GITEE_TOKEN}"
 
-  if [ "$CREATE_TAG_RESP" != "201" ]; then
-    echo "⚠️ 创建 Tag 可能失败（HTTP $CREATE_TAG_RESP）："
-    cat /tmp/create_tag.json
-  else
-    echo "✅ 成功创建 Tag。"
-  fi
-fi
+          curl -X POST \
+            -H "Content-Type: multipart/form-data" \
+            -F "access_token=${GITEE_TOKEN}" \
+            -F "file=@${FILE_PATH}" \
+            "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/assets?tag_name=${TAG_NAME}"
 
-# === 检查 Release 是否存在 ===
-echo "🔍 检查 Release 是否存在..."
-REL_RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/release_check.json \
-  "$API/releases/tags/$TAG?access_token=$TOKEN" || true)
-
-if [ "$REL_RESPONSE" = "200" ]; then
-  RELEASE_ID=$(jq -r '.id' /tmp/release_check.json)
-  echo "✅ Release 已存在（ID: $RELEASE_ID）"
-else
-  echo "🆕 创建新的 Release..."
-  CREATE_REL_RESP=$(curl -s
+          echo "Upload complete."
