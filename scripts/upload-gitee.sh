@@ -1,59 +1,59 @@
-  upload_to_gitee:
-    name: Upload to Gitee
-    runs-on: ubuntu-latest
-    needs: build
-    if: success()
+#!/usr/bin/env bash
+# usage: bash scripts/upload-gitee.sh <GITEE_USER> <GITEE_REPO> <TAG_NAME> <FILE_PATH>
+set -e
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+OWNER="$1"
+REPO="$2"
+TAG_NAME="$3"
+FILE_PATH="$4"
 
-      - name: Find release file
-        id: find_file
-        run: |
-          FILE_PATH=$(find release -name "*.7z" | head -n 1)
-          if [ -z "$FILE_PATH" ]; then
-            echo "No .7z file found."
-            exit 1
-          fi
-          echo "file=$FILE_PATH" >> $GITHUB_OUTPUT
-          echo "Found file: $FILE_PATH"
+if [ -z "$GITEE_TOKEN" ]; then
+  echo "❌ GITEE_TOKEN not set in environment."
+  exit 1
+fi
 
-      - name: Upload to Gitee Release
-        env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          OWNER: ${{ secrets.GITEE_USER }}
-          REPO: ${{ secrets.GITEE_REPO }}
-          TAG_NAME: build-${{ github.run_id }}
-          FILE_PATH: ${{ steps.find_file.outputs.file }}
-        run: |
-          set -e
-          echo "Uploading $FILE_PATH to Gitee as tag $TAG_NAME"
-          echo "Target repo: ${OWNER}/${REPO}"
+if [ -z "$FILE_PATH" ] || [ ! -f "$FILE_PATH" ]; then
+  echo "❌ File not found: $FILE_PATH"
+  exit 1
+fi
 
-          DEFAULT_BRANCH=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}?access_token=${GITEE_TOKEN}" | jq -r '.default_branch')
-          COMMIT_SHA=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/commits/${DEFAULT_BRANCH}?access_token=${GITEE_TOKEN}" | jq -r '.sha')
+echo "🆙 Uploading $FILE_PATH to Gitee as tag $TAG_NAME"
+echo "➡️  Repo: ${OWNER}/${REPO}"
 
-          EXISTS=$(curl -s -o /dev/null -w "%{http_code}" "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}?access_token=${GITEE_TOKEN}")
-          if [ "$EXISTS" = "200" ]; then
-            RELEASE_ID=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}?access_token=${GITEE_TOKEN}" | jq -r '.id')
-            curl -X DELETE "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/${RELEASE_ID}?access_token=${GITEE_TOKEN}"
-          else
-            curl -X POST \
-              -H "Content-Type: application/json;charset=UTF-8" \
-              -d "{\"tag_name\":\"${TAG_NAME}\",\"target_commitish\":\"${COMMIT_SHA}\"}" \
-              "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/tags?access_token=${GITEE_TOKEN}"
-          fi
+# Get default branch
+DEFAULT_BRANCH=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}?access_token=${GITEE_TOKEN}" | jq -r '.default_branch')
+echo "📄 Default branch: $DEFAULT_BRANCH"
 
-          curl -X POST \
-            -H "Content-Type: application/json;charset=UTF-8" \
-            -d "{\"tag_name\":\"${TAG_NAME}\",\"name\":\"${TAG_NAME}\",\"body\":\"Auto-upload from GitHub Actions\"}" \
-            "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases?access_token=${GITEE_TOKEN}"
+# Get commit SHA of default branch
+COMMIT_SHA=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/commits/${DEFAULT_BRANCH}?access_token=${GITEE_TOKEN}" | jq -r '.sha')
 
-          curl -X POST \
-            -H "Content-Type: multipart/form-data" \
-            -F "access_token=${GITEE_TOKEN}" \
-            -F "file=@${FILE_PATH}" \
-            "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/assets?tag_name=${TAG_NAME}"
+# Check if release tag exists
+EXISTS=$(curl -s -o /dev/null -w "%{http_code}" "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}?access_token=${GITEE_TOKEN}")
+if [ "$EXISTS" = "200" ]; then
+  echo "⚠️  Tag exists, deleting old release..."
+  RELEASE_ID=$(curl -s "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/tags/${TAG_NAME}?access_token=${GITEE_TOKEN}" | jq -r '.id')
+  curl -X DELETE "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/${RELEASE_ID}?access_token=${GITEE_TOKEN}"
+else
+  echo "🆕 Creating new tag..."
+  curl -X POST \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    -d "{\"tag_name\":\"${TAG_NAME}\",\"target_commitish\":\"${COMMIT_SHA}\"}" \
+    "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/tags?access_token=${GITEE_TOKEN}"
+fi
 
-          echo "Upload complete."
+# Create release
+echo "📦 Creating release..."
+curl -X POST \
+  -H "Content-Type: application/json;charset=UTF-8" \
+  -d "{\"tag_name\":\"${TAG_NAME}\",\"name\":\"${TAG_NAME}\",\"body\":\"Auto-upload from GitHub Actions\"}" \
+  "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases?access_token=${GITEE_TOKEN}"
+
+# Upload file
+echo "📤 Uploading file: $(basename "$FILE_PATH")"
+curl -X POST \
+  -H "Content-Type: multipart/form-data" \
+  -F "access_token=${GITEE_TOKEN}" \
+  -F "file=@${FILE_PATH}" \
+  "https://gitee.com/api/v5/repos/${OWNER}/${REPO}/releases/assets?tag_name=${TAG_NAME}"
+
+echo "✅ Upload complete."
