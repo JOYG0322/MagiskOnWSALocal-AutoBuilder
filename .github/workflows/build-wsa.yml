@@ -1,10 +1,11 @@
 name: Build & Release WSA Variants
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+  workflow_dispatch:       
+  workflow_run:             
+    workflows: ["Sync Upstream"]
+    types:
+      - completed
 
 permissions:
   contents: write
