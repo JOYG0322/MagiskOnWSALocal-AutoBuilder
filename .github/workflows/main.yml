@@ -100,7 +100,13 @@ jobs:
           echo "Creating release: ${TAG}"
           gh release create "${TAG}" release/*/*.7z \
             --title "WSA Auto Build ${TAG}" \
-            --notes "
+            --notes-file release_notes.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Release Notes
+        run: |
+          cat > release_notes.txt << 'EOF'
 ### 🚀 WSA Automated Build
 
 This release contains all **WSA** build variants compiled automatically.
@@ -114,8 +120,6 @@ This release contains all **WSA** build variants compiled automatically.
 | 11 | Magisk | MindTheGapps | ❌ |
 | 11 | None | MindTheGapps | ❌ |
 
-🗜️ All builds are compressed in \`.7z\` format.
+🗜️ All builds are compressed in `.7z` format.  
 📦 Built from latest source at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
-"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+EOF
