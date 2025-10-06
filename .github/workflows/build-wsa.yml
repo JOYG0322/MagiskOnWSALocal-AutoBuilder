@@ -155,13 +155,12 @@ jobs:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           TAG="build-$(date +'%Y%m%d-%H%M%S')"
-          FILE="${{ steps.find_file.outputs.file }}"
+          FILE=$(find release -name "*.7z" | head -n 1)
           FILE_NAME=$(basename "$FILE")
 
           echo "🔖 Creating release tag: $TAG"
           echo "📦 Uploading file: $FILE_NAME"
 
-          # 创建新 Release (Create new release)
           RESPONSE=$(curl -s -X POST "https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases" \
             -H "Content-Type: application/json" \
             -H "Authorization: token ${GITEE_TOKEN}" \
@@ -169,6 +168,7 @@ jobs:
               \"tag_name\": \"${TAG}\",
               \"name\": \"WSA Build ${TAG}\",
               \"body\": \"Automatic build uploaded from GitHub Actions.\",
+              \"target_commitish\": \"master\",
               \"prerelease\": false
             }")
 
@@ -183,12 +183,11 @@ jobs:
 
           echo "✅ Created release ID: $RELEASE_ID"
 
-          # 上传附件 (Upload asset)
           UPLOAD_URL="https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files"
           curl -s -X POST "$UPLOAD_URL" \
             -H "Authorization: token ${GITEE_TOKEN}" \
             -F "file=@${FILE}" \
             -o result.json
-
+            
           echo "✅ Upload result:"
           cat result.json
