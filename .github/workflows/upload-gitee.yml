@@ -1,76 +1,53 @@
-#!/usr/bin/env bash
-set -e
+name: Upload to Gitee Releases
 
-GITEE_USER="$1"
-GITEE_REPO="$2"
-TAG_NAME="$3"
-FILE_PATH="$4"
+on:
+  workflow_dispatch:  # 手动触发
+  workflow_run:
+    workflows: ["Build & Release WSA Variants"]
+    types:
+      - completed
 
-if [ -z "$GITEE_TOKEN" ]; then
-  echo "❌ 缺少 GITEE_TOKEN 环境变量"
-  exit 1
-fi
+permissions:
+  contents: read
 
-if [ ! -f "$FILE_PATH" ]; then
-  echo "❌ 未找到文件: $FILE_PATH"
-  exit 1
-fi
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-FILE_NAME=$(basename "$FILE_PATH")
-API_BASE="https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}"
+      - name: Setup dependencies
+        run: sudo apt-get install -y curl jq git
 
-echo "📦 正在上传文件: $FILE_NAME"
-echo "➡️ 目标仓库: ${GITEE_USER}/${GITEE_REPO}"
-echo "➡️ 标签: ${TAG_NAME}"
+      - name: Generate tag name
+        id: tag
+        run: echo "TAG_NAME=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
 
-# 检查是否已有该 release
-echo "🔍 检查 Gitee Release 是否存在..."
-EXISTING_RELEASE=$(curl -s -H "Authorization: token ${GITEE_TOKEN}" \
-  "${API_BASE}/releases/tags/${TAG_NAME}" || true)
+      - name: Download all release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release
+          echo "📦 Downloading all release artifacts..."
+          gh release download --repo "${{ github.repository }}" --pattern "*.7z" --dir release
 
-# 获取当前提交 SHA
-COMMIT_SHA=$(git rev-parse HEAD)
-if [ -z "$COMMIT_SHA" ]; then
-  COMMIT_SHA="main"
-fi
-
-if echo "$EXISTING_RELEASE" | grep -q "\"tag_name\":\"${TAG_NAME}\""; then
-  echo "🔁 Release 已存在，准备更新上传..."
-  RELEASE_ID=$(echo "$EXISTING_RELEASE" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
-else
-  echo "🆕 创建新的 Release..."
-  CREATE_RESPONSE=$(curl -s -X POST "${API_BASE}/releases" \
-    -H "Content-Type: application/json" \
-    -H "Authorization: token ${GITEE_TOKEN}" \
-    -d "{
-      \"tag_name\": \"${TAG_NAME}\",
-      \"name\": \"${TAG_NAME}\",
-      \"body\": \"WSA Auto Build Release - ${TAG_NAME}\",
-      \"target_commitish\": \"${COMMIT_SHA}\"
-    }")
-
-  if echo "$CREATE_RESPONSE" | grep -q "\"id\":"; then
-    RELEASE_ID=$(echo "$CREATE_RESPONSE" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
-    echo "✅ 创建成功，Release ID: $RELEASE_ID"
-  else
-    echo "❌ 创建 Release 失败！响应：$CREATE_RESPONSE"
-    exit 1
-  fi
-fi
-
-# 上传文件到 Release
-echo "⬆️ 上传文件到 Gitee..."
-UPLOAD_URL="${API_BASE}/releases/${RELEASE_ID}/assets?access_token=${GITEE_TOKEN}"
-RESPONSE=$(curl -s -X POST \
-  -F "file=@${FILE_PATH}" \
-  -F "name=${FILE_NAME}" \
-  "${UPLOAD_URL}")
-
-if echo "$RESPONSE" | grep -q "\"id\":"; then
-  echo "✅ 文件上传成功: ${FILE_NAME}"
-else
-  echo "❌ 文件上传失败！响应：$RESPONSE"
-  exit 1
-fi
-
-echo "🎉 上传完成！"
+      - name: Upload each .7z to Gitee
+        env:
+          GITEE_USER: JOYG0322
+          GITEE_REPO: magisk-on-wsalocal-auto-builder
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          TAG_NAME: ${{ env.TAG_NAME }}
+        run: |
+          chmod +x scripts/upload-gitee.sh
+          for file in release/*.7z; do
+            if [ -f "$file" ]; then
+              echo "🆙 Uploading $file..."
+              bash scripts/upload-gitee.sh "$GITEE_USER" "$GITEE_REPO" "$TAG_NAME" "$file"
+            else
+              echo "⚠️ No .7z file found!"
+              exit 1
+            fi
+          done
