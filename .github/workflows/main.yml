@@ -1,4 +1,4 @@
-name: Build Minimal WSA
+name: Build WSA Minimal
 
 on:
   workflow_dispatch:
@@ -6,34 +6,31 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install minimal dependencies
+      - name: Prepare minimal environment
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends \
-            git wget unzip python3 python3-pip p7zip-full aria2
+          sudo apt-get install -y git wget unzip python3 python3-pip p7zip-full aria2
+          sudo systemctl disable --now snapd.socket snapd.service || true
+          sudo apt-get remove --purge -y firefox snapd || true
+          sudo rm -rf /var/cache/snapd /snap /var/snap /var/lib/snapd /etc/systemd/system/snap* || true
 
-      - name: Prepare build environment
+      - name: Run WSA build script
         run: |
-          chmod +x scripts/build.sh
-          echo "=== Starting minimal WSA build ==="
-
-      - name: Build WSA (Windows 10, no GApps, remove Amazon)
-        run: |
+          chmod +x ./scripts/build.sh
           ./scripts/build.sh \
             --arch x64 \
             --release-type retail \
             --root-sol none \
             --compress-format 7z \
-            --gapps-variant none \
+            --target-win 10 \
             --remove-amazon
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WSA-Minimal-x64
-          path: output/
+          name: WSA-minimal
+          path: output/*.7z
