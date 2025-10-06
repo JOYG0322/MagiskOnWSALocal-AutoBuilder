@@ -11,12 +11,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare environment
+      - name: Prepare environment (no snap)
         run: |
           sudo apt-get update -y
+          sudo apt-get purge -y snapd firefox || true
+          sudo rm -rf /var/cache/apt/archives/*.deb /snap /var/snap /var/lib/snapd /etc/systemd/system/snap*
           sudo apt-get install -y git wget unzip p7zip-full python3 python3-pip aria2
 
-      - name: Build WSA (Win10, no GApps, remove Amazon)
+      - name: Build WSA (Minimal Win10)
         run: |
           echo "==== Building WSA (minimal) ===="
           export TERM=dumb
@@ -30,7 +32,7 @@ jobs:
             --windows-version 10 \
             --compress-format 7z
 
-      - name: Upload Artifacts
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: WSA_Win10_NoGApps
