@@ -1,71 +1,76 @@
-name: Upload Built WSA Packages to Gitee
+#!/usr/bin/env bash
+set -e
 
-on:
-  workflow_dispatch:
+GITEE_USER="$1"
+GITEE_REPO="$2"
+TAG_NAME="$3"
+FILE_PATH="$4"
 
-permissions:
-  contents: read
+if [ -z "$GITEE_TOKEN" ]; then
+  echo "❌ 缺少 GITEE_TOKEN 环境变量"
+  exit 1
+fi
 
-jobs:
-  upload-gitee:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - { winver: 10, root: magisk, gapps: none }
-          - { winver: 10, root: magisk, gapps: mindthegapps }
-          - { winver: 10, root: kernelsu, gapps: none }
-          - { winver: 10, root: none, gapps: mindthegapps }
-          - { winver: 11, root: magisk, gapps: none }
-          - { winver: 11, root: magisk, gapps: mindthegapps }
-          - { winver: 11, root: kernelsu, gapps: none }
-          - { winver: 11, root: none, gapps: mindthegapps }
+if [ ! -f "$FILE_PATH" ]; then
+  echo "❌ 未找到文件: $FILE_PATH"
+  exit 1
+fi
 
-    env:
-      GH_TOKEN: ${{ github.token }}   # ✅ 必须添加，供 gh CLI 使用
+FILE_NAME=$(basename "$FILE_PATH")
+API_BASE="https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}"
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+echo "📦 正在上传文件: $FILE_NAME"
+echo "➡️ 目标仓库: ${GITEE_USER}/${GITEE_REPO}"
+echo "➡️ 标签: ${TAG_NAME}"
 
-      - name: Generate tag name
-        id: set_tag
-        run: |
-          TAG_NAME="build-$(date +'%Y%m%d-%H%M%S')"
-          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
-          echo "Generated tag: $TAG_NAME"
+# 检查是否已有该 release
+echo "🔍 检查 Gitee Release 是否存在..."
+EXISTING_RELEASE=$(curl -s -H "Authorization: token ${GITEE_TOKEN}" \
+  "${API_BASE}/releases/tags/${TAG_NAME}" || true)
 
-      - name: Prepare release files
-        run: |
-          mkdir -p release
-          echo "📦 Fetching built artifact for: ${{ matrix.winver }} / ${{ matrix.root }} / ${{ matrix.gapps }}"
+# 获取当前提交 SHA
+COMMIT_SHA=$(git rev-parse HEAD)
+if [ -z "$COMMIT_SHA" ]; then
+  COMMIT_SHA="main"
+fi
 
-          # 自动重试 3 次，避免偶发下载失败
-          for i in 1 2 3; do
-            gh release download --repo "${{ github.repository }}" \
-              --pattern "WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}.7z" \
-              --dir release && break
-            echo "⚠️ Download attempt $i failed, retrying in 5s..."
-            sleep 5
-          done
+if echo "$EXISTING_RELEASE" | grep -q "\"tag_name\":\"${TAG_NAME}\""; then
+  echo "🔁 Release 已存在，准备更新上传..."
+  RELEASE_ID=$(echo "$EXISTING_RELEASE" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
+else
+  echo "🆕 创建新的 Release..."
+  CREATE_RESPONSE=$(curl -s -X POST "${API_BASE}/releases" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: token ${GITEE_TOKEN}" \
+    -d "{
+      \"tag_name\": \"${TAG_NAME}\",
+      \"name\": \"${TAG_NAME}\",
+      \"body\": \"WSA Auto Build Release - ${TAG_NAME}\",
+      \"target_commitish\": \"${COMMIT_SHA}\"
+    }")
 
-          FILE_PATH=$(find release -name "*.7z" | head -n 1)
-          if [ ! -f "$FILE_PATH" ]; then
-            echo "❌ No .7z found for ${{ matrix.winver }} ${{ matrix.root }} ${{ matrix.gapps }}"
-            exit 1
-          fi
-          echo "✅ Found file: $FILE_PATH"
+  if echo "$CREATE_RESPONSE" | grep -q "\"id\":"; then
+    RELEASE_ID=$(echo "$CREATE_RESPONSE" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
+    echo "✅ 创建成功，Release ID: $RELEASE_ID"
+  else
+    echo "❌ 创建 Release 失败！响应：$CREATE_RESPONSE"
+    exit 1
+  fi
+fi
 
-      - name: Upload to Gitee Releases
-        env:
-          GITEE_USER: JOYG0322
-          GITEE_REPO: magisk-on-wsalocal-auto-builder
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          TAG_NAME: ${{ env.TAG_NAME }}
-        run: |
-          chmod +x scripts/upload-gitee.sh
-          FILE_PATH=$(find release -name "*.7z" | head -n 1)
-          echo "🆙 Uploading $FILE_PATH to Gitee as tag $TAG_NAME"
-          bash scripts/upload-gitee.sh "$GITEE_USER" "$GITEE_REPO" "$TAG_NAME" "$FILE_PATH"
+# 上传文件到 Release
+echo "⬆️ 上传文件到 Gitee..."
+UPLOAD_URL="${API_BASE}/releases/${RELEASE_ID}/assets?access_token=${GITEE_TOKEN}"
+RESPONSE=$(curl -s -X POST \
+  -F "file=@${FILE_PATH}" \
+  -F "name=${FILE_NAME}" \
+  "${UPLOAD_URL}")
+
+if echo "$RESPONSE" | grep -q "\"id\":"; then
+  echo "✅ 文件上传成功: ${FILE_NAME}"
+else
+  echo "❌ 文件上传失败！响应：$RESPONSE"
+  exit 1
+fi
+
+echo "🎉 上传完成！"
