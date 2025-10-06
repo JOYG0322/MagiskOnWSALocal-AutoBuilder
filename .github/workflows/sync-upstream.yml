@@ -1,0 +1,79 @@
+name: Sync upstream (LSPosed/MagiskOnWSALocal)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *' # 每天 03:00 UTC 运行一次，可改
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM_REPO: LSPosed/MagiskOnWSALocal
+      UPSTREAM_BRANCH: main
+      PRESERVE_PATHS: |
+        .github/workflows/build-wsa.yml
+        .github/workflows/sync-upstream.yml
+
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add and fetch upstream
+        run: |
+          git remote remove upstream || true
+          git remote add upstream https://github.com/${{ env.UPSTREAM_REPO }}.git
+          git fetch --no-tags --prune upstream ${{ env.UPSTREAM_BRANCH }}
+
+      - name: Backup current state
+        run: |
+          BACKUP_BRANCH=backup-before-sync-${GITHUB_RUN_ID}
+          git branch -f "$BACKUP_BRANCH"
+          echo "BACKUP_BRANCH=$BACKUP_BRANCH" >> $GITHUB_ENV
+
+      - name: Merge upstream changes
+        run: |
+          set +e
+          git merge --no-edit "upstream/${{ env.UPSTREAM_BRANCH }}"
+          MERGE_RESULT=$?
+          set -e
+          echo "Merge result code: $MERGE_RESULT"
+
+      - name: Restore preserved files
+        run: |
+          echo "Restoring preserved files..."
+          echo "${{ env.PRESERVE_PATHS }}" | while read path; do
+            [ -z "$path" ] && continue
+            echo "→ Restoring $path"
+            git checkout "$BACKUP_BRANCH" -- "$path" 2>/dev/null || echo "  (skip, not found)"
+            git add "$path" || true
+          done
+
+      - name: Commit if changes exist
+        run: |
+          if ! git diff --quiet --cached; then
+            git commit -m "chore(sync): merge from upstream ($(date -u +'%Y-%m-%d %H:%M:%S UTC'))"
+          else
+            echo "No changes to commit."
+          fi
+
+      - name: Show diff summary
+        run: |
+          echo "Changed files summary:"
+          git diff --stat HEAD~1 || echo "(No previous commit to compare)"
+
+      - name: Push changes
+        run: |
+          git push origin HEAD:${{ github.event.repository.default_branch }} --set-upstream || true
