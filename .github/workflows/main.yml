@@ -1,4 +1,4 @@
-name: Build Minimal WSA
+name: Build and Release MagiskOnWSA
 
 on:
   workflow_dispatch:
@@ -6,24 +6,80 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        winver: [10, 11]
+        root: [magisk, kernelsu, none]
+        gapps: [mindthegapps, none]
+        exclude:
+          - winver: 10
+            root: none
+            gapps: none
+          - winver: 11
+            root: none
+            gapps: none
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y python3 python3-venv python3-pip aria2 unzip p7zip-full
+          sudo apt update -y
+          sudo apt install -y python3 python3-pip aria2 unzip p7zip-full wget git whiptail
 
-      - name: Run builder
-        working-directory: scripts
+      - name: Build WSA
         run: |
-          chmod +x build.sh
-          ./build.sh --arch x64 --release-type retail --root-sol none --remove-amazon --compress-format 7z
+          chmod +x scripts/build.sh
+          cd scripts
 
-      - name: Upload output
+          WINVER=${{ matrix.winver }}
+          ROOT=${{ matrix.root }}
+          GAPPS=${{ matrix.gapps }}
+          RELEASE_TYPE="retail"
+          ARCH="x64"
+
+          GAPP_ARG=""
+          if [ "$GAPPS" != "none" ]; then
+            GAPP_ARG="--install-gapps"
+          fi
+
+          echo "==== 构建 WSA ===="
+          echo "Windows: $WINVER"
+          echo "Root方案: $ROOT"
+          echo "GApps: $GAPPS"
+          echo "=================="
+
+          ./build.sh --arch "$ARCH" \
+                     --release-type "$RELEASE_TYPE" \
+                     --root-sol "$ROOT" \
+                     $GAPP_ARG \
+                     --remove-amazon \
+                     --compress-format 7z
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p release
+          cp -r output/*.7z release/ || true
+
+      - name: Upload artifact (for backup)
         uses: actions/upload-artifact@v4
         with:
-          name: WSA-Minimal
-          path: output/
+          name: WSA-${{ matrix.winver }}-${{ matrix.root }}-${{ matrix.gapps }}
+          path: release/*.7z
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "WSA-${{ github.run_number }}"
+          name: "MagiskOnWSA Build #${{ github.run_number }}"
+          body: |
+            🔧 自动构建版本  
+            - Windows: ${{ matrix.winver }}
+            - Root方案: ${{ matrix.root }}
+            - GApps: ${{ matrix.gapps }}
+            - Amazon: 移除
+          files: release/*.7z
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
