@@ -1,10 +1,7 @@
-name: Build & Release WSA Variants
+name: Build & Release WSA
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
   contents: write
@@ -16,11 +13,9 @@ jobs:
     strategy:
       matrix:
         include:
-          # Win10
           - { winver: 10, root: magisk, gapps: none }
           - { winver: 10, root: magisk, gapps: mindthegapps }
           - { winver: 10, root: none, gapps: mindthegapps }
-          # Win11
           - { winver: 11, root: magisk, gapps: none }
           - { winver: 11, root: magisk, gapps: mindthegapps }
           - { winver: 11, root: none, gapps: mindthegapps }
@@ -28,10 +23,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup build dependencies
+      - name: Install dependencies
         run: |
           sudo apt update -y
           sudo apt install -y python3 python3-pip aria2 p7zip-full unzip
@@ -40,35 +33,30 @@ jobs:
         run: |
           chmod +x scripts/build.sh
           cd scripts
-
           WINVER=${{ matrix.winver }}
           ROOT=${{ matrix.root }}
           GAPPS=${{ matrix.gapps }}
           RELEASE_TYPE="retail"
           ARCH="x64"
-
           GAPP_ARG=""
           if [ "$GAPPS" != "none" ]; then
             GAPP_ARG="--install-gapps"
           fi
-
           echo "==== Building WSA ===="
           echo "Windows: $WINVER"
           echo "Root: $ROOT"
           echo "GApps: $GAPPS"
           echo "======================"
-
           ./build.sh --arch "$ARCH" \
                      --release-type "$RELEASE_TYPE" \
                      --root-sol "$ROOT" \
                      $GAPP_ARG \
                      --remove-amazon \
                      --compress-format 7z
-
           mkdir -p ../release/$WINVER
           mv ../output/*.7z "../release/$WINVER/WSA_${WINVER}_${ROOT}_${GAPPS}.7z"
 
-      - name: Upload artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}
@@ -81,27 +69,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Download all build artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: release
 
-      - name: Generate tag
-        id: set_tag
-        run: |
-          TAG="build-$(date +'%Y%m%d-%H%M%S')"
-          echo "TAG=$TAG" >> $GITHUB_ENV
-          echo "Generated tag: $TAG"
+      - name: Set release tag
+        id: vars
+        run: echo "TAG=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
 
-      - name: Write release notes
+      - name: Create release notes file
         run: |
-          cat <<'EOF' > release_notes.txt
-### 🚀 WSA Automated Build
+          cat > release_notes.txt <<'NOTES'
+### 🚀 WSA Auto Build
 
-This release contains all **WSA** build variants compiled automatically.
+This release contains all build variants:
 
 | Windows | Root | GApps | Amazon |
 |----------|------|-------|--------|
@@ -112,13 +95,13 @@ This release contains all **WSA** build variants compiled automatically.
 | 11 | Magisk | MindTheGapps | ❌ |
 | 11 | None | MindTheGapps | ❌ |
 
-🗜️ All builds are compressed in `.7z` format.  
-📦 Built from latest source at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
-EOF
+All archives are compressed `.7z` files.  
+Generated automatically via GitHub Actions.
+NOTES
 
       - name: Create GitHub Release
         run: |
-          echo "Creating release with tag: ${TAG}"
+          echo "Creating release tag: ${TAG}"
           gh release create "${TAG}" release/*/*.7z \
             --title "WSA Auto Build ${TAG}" \
             --notes-file release_notes.txt
