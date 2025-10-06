@@ -99,7 +99,8 @@ jobs:
         run: |
           echo "Creating release: ${TAG}"
           
-          cat << 'EOF' > release_notes.md
+          # 创建简洁的发布说明
+          cat > release_notes.md << EOF
 ### 🚀 WSA Automated Build
 
 Windows Subsystem for Android builds for Windows 10 & 11.
