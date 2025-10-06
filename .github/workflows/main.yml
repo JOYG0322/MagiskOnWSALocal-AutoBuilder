@@ -11,28 +11,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare environment (no snap)
+      - name: Install minimal dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
             git wget unzip python3 python3-pip p7zip-full aria2
 
-      - name: Build WSA (Minimal Win10)
+      - name: Prepare build environment
         run: |
-          echo "==== Building WSA (minimal) ===="
-          export TERM=dumb
-          export NO_COLOR=1
-          bash scripts/run.sh \
+          chmod +x scripts/build.sh
+          echo "=== Starting minimal WSA build ==="
+
+      - name: Build WSA (Windows 10, no GApps, remove Amazon)
+        run: |
+          ./scripts/build.sh \
             --arch x64 \
             --release-type retail \
             --root-sol none \
+            --compress-format 7z \
             --gapps-variant none \
-            --remove-amazon true \
-            --windows-version 10 \
-            --compress-format 7z
+            --remove-amazon
 
-      - name: Upload Build Artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WSA_Win10_NoGApps
-          path: output/*.7z
+          name: WSA-Minimal-x64
+          path: output/
