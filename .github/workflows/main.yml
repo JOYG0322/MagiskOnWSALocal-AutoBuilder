@@ -31,19 +31,22 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
-        submodules: true
-        
+          submodules: true  
+
       - name: Prepare environment
         run: |
           sudo apt update
           sudo apt install -y git wget unzip python3 python3-pip p7zip-full aria2
+          chmod +x run.sh
 
-      - name: Build WSA package
+      - name: Build WSA
         run: |
+          echo "==== Building WSA ===="
           bash run.sh \
             --magisk ${{ github.event.inputs.MagiskVersion }} \
             --root ${{ github.event.inputs.RootSolution }} \
@@ -52,8 +55,17 @@ jobs:
             --arch ${{ github.event.inputs.Architecture }} \
             --windows ${{ github.event.inputs.WindowsEdition }}
 
-      - name: Upload result
+      - name: Rename output with timestamp
+        if: success()
+        run: |
+          mkdir -p renamed_output
+          for f in output/*.7z; do
+            newname="WSA_${{ github.event.inputs.RootSolution }}_${{ github.event.inputs.MagiskVersion }}_${{ github.event.inputs.Architecture }}_${{ github.event.inputs.WindowsEdition }}_$(date +'%Y%m%d').7z"
+            mv "$f" "renamed_output/$newname"
+          done
+
+      - name: Upload result artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WSA-${{ github.event.inputs.RootSolution }}-${{ github.run_id }}
-          path: output/*.7z
+          name: WSA-${{ github.run_id }}
+          path: renamed_output/*.7z
