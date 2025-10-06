@@ -182,12 +182,15 @@ jobs:
           fi
 
           echo "✅ Created release ID: $RELEASE_ID"
-
+          
           UPLOAD_URL="https://gitee.com/api/v5/repos/${GITEE_USER}/${GITEE_REPO}/releases/${RELEASE_ID}/attach_files"
-          curl -s -X POST "$UPLOAD_URL" \
+
+          echo "🚀 Uploading file to Gitee..."
+          curl -L --progress-bar \
+            -X POST "$UPLOAD_URL" \
             -H "Authorization: token ${GITEE_TOKEN}" \
             -F "file=@${FILE}" \
-            -o result.json
-            
+            -o result.json || { echo "❌ Upload failed."; exit 1; }
+
           echo "✅ Upload result:"
           cat result.json
