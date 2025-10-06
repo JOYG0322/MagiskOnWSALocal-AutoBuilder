@@ -6,6 +6,8 @@
 
 [English README](./README.md)
 
+[适用于Windows10的补丁](https://github.com/JOYG0322/MagiskOnWSALocal-AutoBuilder/releases/download/build-20251006-130551/patch-win10.ps1)
+
 ---
 
 ## 🧩 目的
