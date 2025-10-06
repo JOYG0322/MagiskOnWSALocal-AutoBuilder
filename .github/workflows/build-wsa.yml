@@ -98,21 +98,10 @@ jobs:
       - name: Create GitHub Release
         run: |
           echo "Creating release: ${TAG}"
+          CURRENT_TIME=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
           
-          # 创建简洁的发布说明
-          cat > release_notes.md << EOF
-### 🚀 WSA Automated Build
-
-Windows Subsystem for Android builds for Windows 10 & 11.
-
-**Options:** Magisk/None root + MindTheGapps/None GApps  
-**All variants:** Amazon removed, 7z compressed
-
-Built: $(date -u +'%Y-%m-%d %H:%M UTC')
-EOF
-
           gh release create "${TAG}" release/*/*.7z \
             --title "WSA Auto Build ${TAG}" \
-            --notes-file release_notes.md
+            --notes "WSA Automated Build - ${CURRENT_TIME}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
