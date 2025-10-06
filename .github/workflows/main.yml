@@ -1,4 +1,4 @@
-name: Build WSA Variants
+name: Build Minimal WSA
 
 on:
   workflow_dispatch:
@@ -6,21 +6,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - arch: x64
-            gapps: mindthegapps
-            winver: 10
-          - arch: x64
-            gapps: mindthegapps
-            winver: 11
-          - arch: x64
-            gapps: none
-            winver: 10
-          - arch: x64
-            gapps: none
-            winver: 11
 
     steps:
       - name: Checkout repository
@@ -28,24 +13,25 @@ jobs:
 
       - name: Prepare environment
         run: |
-          sudo apt-get update
+          sudo apt-get update -y
           sudo apt-get install -y git wget unzip p7zip-full python3 python3-pip aria2
 
-      - name: Build WSA
+      - name: Build WSA (Win10, no GApps, remove Amazon)
         run: |
-          echo "==== Building WSA ===="
+          echo "==== Building WSA (minimal) ===="
           export TERM=dumb
           export NO_COLOR=1
           bash scripts/run.sh \
-            --arch ${{ matrix.arch }} \
+            --arch x64 \
             --release-type retail \
-            --gapps-variant ${{ matrix.gapps }} \
             --root-sol none \
-            --windows-version ${{ matrix.winver }} \
+            --gapps-variant none \
+            --remove-amazon true \
+            --windows-version 10 \
             --compress-format 7z
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: WSA_${{ matrix.arch }}_${{ matrix.gapps }}_Win${{ matrix.winver }}
+          name: WSA_Win10_NoGApps
           path: output/*.7z
