@@ -15,8 +15,8 @@ jobs:
       PROTECTED_FILES: |
         .github/workflows/build-wsa.yml
         .github/workflows/sync-upstream.yml
-        README.md
-        README_zh.md
+        docs/README.md
+        docs/README_zh.md
 
     steps:
       - name: Checkout repository
