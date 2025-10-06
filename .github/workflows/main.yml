@@ -20,6 +20,7 @@ jobs:
 
       - name: Run WSA build script
         run: |
+          export TERM=xterm
           chmod +x ./scripts/build.sh
           ./scripts/build.sh \
             --arch x64 \
