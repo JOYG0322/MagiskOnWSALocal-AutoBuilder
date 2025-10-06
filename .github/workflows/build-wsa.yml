@@ -98,10 +98,20 @@ jobs:
       - name: Create GitHub Release
         run: |
           echo "Creating release: ${TAG}"
-          NOTES="### 🚀 WSA Automated Build\n\nThis release contains all **WSA** build variants compiled automatically.\n\n| Windows | Root | GApps | Amazon |\n|----------|------|-------|--------|\n| 10 | Magisk | None | ❌ |\n| 10 | Magisk | MindTheGapps | ❌ |\n| 10 | None | MindTheGapps | ❌ |\n| 11 | Magisk | None | ❌ |\n| 11 | Magisk | MindTheGapps | ❌ |\n| 11 | None | MindTheGapps | ❌ |\n\n🗜️ All builds are compressed in \`.7z\` format.\n📦 Built from latest source at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           
+          cat << 'EOF' > release_notes.md
+### 🚀 WSA Automated Build
+
+Windows Subsystem for Android builds for Windows 10 & 11.
+
+**Options:** Magisk/None root + MindTheGapps/None GApps  
+**All variants:** Amazon removed, 7z compressed
+
+Built: $(date -u +'%Y-%m-%d %H:%M UTC')
+EOF
+
           gh release create "${TAG}" release/*/*.7z \
             --title "WSA Auto Build ${TAG}" \
-            --notes "$NOTES"
+            --notes-file release_notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
