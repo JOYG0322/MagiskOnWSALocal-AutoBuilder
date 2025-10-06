@@ -1,38 +1,58 @@
-#!/bin/bash
-set -e
+name: Upload Artifacts to Gitee
 
-FILE="$1"
-FILENAME=$(basename "$FILE")
-REPO="$GITEE_REPO"
-TOKEN="$GITEE_TOKEN"
+on:
+  workflow_dispatch:        # 允许手动触发
+  workflow_run:             # 主构建完成后自动触发
+    workflows: ["Build & Release WSA Variants"]
+    types:
+      - completed
 
-# 获取最新 Release ID
-RELEASE_ID=$(curl -s -H "Authorization: token $TOKEN" \
-  "https://gitee.com/api/v5/repos/$REPO/releases/latest" | jq -r .id)
+permissions:
+  contents: read
 
-if [ "$RELEASE_ID" == "null" ] || [ -z "$RELEASE_ID" ]; then
-  echo "❌ 无法获取 Release ID，请确认 Gitee 仓库中存在一个 Release。"
-  exit 1
-fi
+jobs:
+  upload-to-gitee:
+    name: Upload to Gitee Releases
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
-echo "🎯 目标 Release ID: $RELEASE_ID"
-echo "📦 上传文件: $FILENAME"
+    strategy:
+      matrix:
+        include:
+          - { winver: 10, root: magisk, gapps: none }
+          - { winver: 10, root: magisk, gapps: mindthegapps }
+          - { winver: 10, root: kernelsu, gapps: none }
+          - { winver: 10, root: none, gapps: mindthegapps }
+          - { winver: 11, root: magisk, gapps: none }
+          - { winver: 11, root: magisk, gapps: mindthegapps }
+          - { winver: 11, root: kernelsu, gapps: none }
+          - { winver: 11, root: none, gapps: mindthegapps }
 
-for i in {1..5}; do
-  echo "🔁 第 $i 次尝试上传..."
-  RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gitee_upload.json \
-    -X POST "https://gitee.com/api/v5/repos/$REPO/releases/$RELEASE_ID/assets?access_token=$TOKEN" \
-    -F "name=$FILENAME" \
-    -F "attachment=@$FILE")
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-  if [ "$RESPONSE" == "201" ] || [ "$RESPONSE" == "200" ]; then
-    echo "✅ 上传成功: $FILENAME"
-    exit 0
-  fi
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}
+          path: ./release
 
-  echo "⚠️ 上传失败（HTTP $RESPONSE），60 秒后重试..."
-  sleep 60
-done
+      - name: Setup upload script
+        run: chmod +x scripts/upload-gitee.sh
 
-echo "❌ 上传失败（已重试 5 次）"
-exit 1
+      - name: Upload to Gitee
+        env:
+          GITEE_USER: JOYG0322                  # 改成你的 Gitee 用户名（区分大小写）
+          GITEE_REPO: magisk-on-wsalocal-auto-builder
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          TAG_NAME: latest
+        run: |
+          FILE_PATH=$(find release -name "*.7z" | head -n 1)
+          if [ -f "$FILE_PATH" ]; then
+            echo "Found file: $FILE_PATH"
+            bash scripts/upload-gitee.sh "$GITEE_USER" "$GITEE_REPO" "$TAG_NAME" "$FILE_PATH"
+          else
+            echo "❌ No .7z file found for ${{ matrix.winver }} ${{ matrix.root }} ${{ matrix.gapps }}"
+            exit 1
+          fi
