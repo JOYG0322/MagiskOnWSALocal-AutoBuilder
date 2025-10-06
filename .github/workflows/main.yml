@@ -1,45 +1,49 @@
-name: Build WSA Auto Release (timestamped)
+name: Build & Release WSA Variants
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 jobs:
-  build-wsa:
+  build:
     runs-on: ubuntu-latest
 
     strategy:
-      fail-fast: false
       matrix:
         include:
-          # Windows 10
-          - { winver: "10", root: "magisk",    gapps: "none" }
-          - { winver: "10", root: "magisk",    gapps: "mindthegapps" }
-          - { winver: "10", root: "kernelsu",  gapps: "none" }
-          - { winver: "10", root: "none",      gapps: "mindthegapps" }
-          # Windows 11
-          - { winver: "11", root: "magisk",    gapps: "none" }
-          - { winver: "11", root: "magisk",    gapps: "mindthegapps" }
-          - { winver: "11", root: "kernelsu",  gapps: "none" }
-          - { winver: "11", root: "none",      gapps: "mindthegapps" }
+          # Win10
+          - { winver: 10, root: magisk, gapps: none }
+          - { winver: 10, root: magisk, gapps: mindthegapps }
+          - { winver: 10, root: none, gapps: mindthegapps }
+          # Win11
+          - { winver: 11, root: magisk, gapps: none }
+          - { winver: 11, root: magisk, gapps: mindthegapps }
+          - { winver: 11, root: none, gapps: mindthegapps }
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # ✅ 保留 .git 以供后续 release 使用
+          fetch-depth: 0
 
-      - name: Install minimal dependencies
+      - name: Setup build dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y python3 python3-venv python3-pip aria2 unzip p7zip-full
+          sudo apt update -y
+          sudo apt install -y python3 python3-pip aria2 p7zip-full unzip
 
-      - name: Build WSA
+      - name: Run WSA build
         run: |
           chmod +x scripts/build.sh
           cd scripts
-          WINVER="${{ matrix.winver }}"
-          ROOT="${{ matrix.root }}"
-          GAPPS="${{ matrix.gapps }}"
+
+          WINVER=${{ matrix.winver }}
+          ROOT=${{ matrix.root }}
+          GAPPS=${{ matrix.gapps }}
           RELEASE_TYPE="retail"
           ARCH="x64"
 
@@ -52,7 +56,7 @@ jobs:
           echo "Windows: $WINVER"
           echo "Root: $ROOT"
           echo "GApps: $GAPPS"
-          echo "======================="
+          echo "======================"
 
           ./build.sh --arch "$ARCH" \
                      --release-type "$RELEASE_TYPE" \
@@ -60,56 +64,58 @@ jobs:
                      $GAPP_ARG \
                      --remove-amazon \
                      --compress-format 7z
-        shell: bash
 
-      - name: Prepare artifact
-        run: |
-          mkdir -p release
-          OUTPUT_NAME="WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}.7z"
-          mv output/*.7z "release/$OUTPUT_NAME" || echo "⚠️ No archive found for $OUTPUT_NAME"
+          mkdir -p ../release/$WINVER
+          mv ../output/*.7z "../release/$WINVER/WSA_${WINVER}_${ROOT}_${GAPPS}.7z"
 
-      - name: Upload artifact (debug)
+      - name: Upload artifact (for later use)
         uses: actions/upload-artifact@v4
         with:
           name: WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}
-          path: release/*.7z
+          path: release/${{ matrix.winver }}/WSA_${{ matrix.winver }}_${{ matrix.root }}_${{ matrix.gapps }}.7z
 
   release:
     runs-on: ubuntu-latest
-    needs: build-wsa
-
+    needs: build
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # ✅ 确保 gh CLI 有 git 环境
+          fetch-depth: 0
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release
 
-      - name: Create timestamp tag
+      - name: Generate tag
         id: set_tag
         run: |
           TAG="build-$(date +'%Y%m%d-%H%M%S')"
           echo "TAG=$TAG" >> $GITHUB_ENV
-          echo "✅ Using release tag: $TAG"
+          echo "Generated tag: $TAG"
 
       - name: Create GitHub Release
         run: |
-          echo "Creating release with tag: ${TAG}"
-          cd "${GITHUB_WORKSPACE}"
+          echo "Creating release: ${TAG}"
           gh release create "${TAG}" release/*/*.7z \
             --title "WSA Auto Build ${TAG}" \
-            --notes "Automated multi-variant build of WSA.
-            
-**Included Variants:**
-- Windows 10 / Windows 11  
-- Root Solutions: Magisk / KernelSU / None  
-- With or Without GApps  
-- Amazon Appstore Removed  
-- All builds are compressed as .7z archives"
+            --notes "
+### 🚀 WSA Automated Build
+
+This release contains all **WSA** build variants compiled automatically.
+
+| Windows | Root | GApps | Amazon |
+|----------|------|-------|--------|
+| 10 | Magisk | None | ❌ |
+| 10 | Magisk | MindTheGapps | ❌ |
+| 10 | None | MindTheGapps | ❌ |
+| 11 | Magisk | None | ❌ |
+| 11 | Magisk | MindTheGapps | ❌ |
+| 11 | None | MindTheGapps | ❌ |
+
+🗜️ All builds are compressed in \`.7z\` format.
+📦 Built from latest source at: $(date -u +'%Y-%m-%d %H:%M:%S UTC')
+"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ env.TAG }}
